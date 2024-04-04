@@ -23,18 +23,32 @@ class Server(object):
         print("Serving %s on %s:%s." % (directory, addr, port))
         # FALTA: Crear socket del servidor, configurarlo, asignarlo
         # a una dirección y puerto, etc.
-
+        # Creo un socket de servidor 
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        # Bind es para establecer la dirección y el puerto del servidor
+        self.server_socket.bind((addr, port))
+        # Es para establecer la cantidad de conexiones que se pueden hacer al servidor
+        self.directory = directory
+        
     def serve(self):
         """
         Loop principal del servidor. Se acepta una conexión a la vez
         y se espera a que concluya antes de seguir.
         """
+        self.server_socket.listen(1)
         while True:
-            pass
+            # Aceptar una conexión                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+            client_socket, client_address = self.server_socket.accept()
+            client_socket.send(b"Hello %s\n" %client_address[0].encode())
+            # Crea un obbjeto de la clase Connection
+            conexion = connection.Connection(client_socket, self.directory)
+            print(f"Connected by: {client_address}")
+            conexion.handle()
             # FALTA: Aceptar una conexión al server, crear una
             # Connection para la conexión y atenderla hasta que termine.
 
-
+#Estacionamiento de cursores ---> 
 def main():
     """Parsea los argumentos y lanza el server"""
 
