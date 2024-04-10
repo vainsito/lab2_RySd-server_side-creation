@@ -89,11 +89,10 @@ class Connection(object):
         """
         Cierra la conexión al cliente
         """
-        self.send(f"{CODE_OK} {error_messages[CODE_OK]}")
+        self.error_handler(CODE_OK)
         self.connect = False
-        
+        print("Closing connection...")
 
-        
     def get_file_listing(self):
         """
         Obtiene la lista de archivos disponibles en el directorio y la envía al cliente
@@ -230,3 +229,4 @@ class Connection(object):
                 elif len(line) > 0:
                     self.cmd_selector(line)
                 line = self.parser()
+            self.socket.close()
