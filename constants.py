@@ -5,12 +5,12 @@
 # Copyright 2008-2010 Natalia Bidart y Daniel Moisset
 # $Id: constants.py 388 2011-03-22 14:20:06Z nicolasw $
 
-DEFAULT_DIR = 'testdata'
-DEFAULT_ADDR = '0.0.0.0'  # 0.0.0.0 representa todas las IPv4 del server
+DEFAULT_DIR = "testdata"
+DEFAULT_ADDR = "0.0.0.0"  # 0.0.0.0 representa todas las IPv4 del server
 DEFAULT_PORT = 19500
+MAX_BUFFER_SIZE = 2**32
 
-
-EOL = '\r\n'
+EOL = "\r\n"
 NEWLINE = "\n"
 
 CODE_OK = 0
@@ -47,9 +47,9 @@ def fatal_status(s):
 
 
 VALID_CHARS = set(".-_")
-for i in range(ord('A'), ord('Z') + 1):
+for i in range(ord("A"), ord("Z") + 1):
     VALID_CHARS.add(chr(i))
-for i in range(ord('a'), ord('z') + 1):
+for i in range(ord("a"), ord("z") + 1):
     VALID_CHARS.add(chr(i))
-for i in range(ord('0'), ord('9') + 1):
+for i in range(ord("0"), ord("9") + 1):
     VALID_CHARS.add(chr(i))

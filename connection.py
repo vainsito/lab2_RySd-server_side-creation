@@ -7,6 +7,7 @@ import socket
 import os
 from constants import *
 from base64 import b64encode
+import logging
 
 class Connection(object):
     """
@@ -37,6 +38,37 @@ class Connection(object):
             return INVALID_ARGUMENTS
         else:
             return FILE_NOT_FOUND
+    
+    def send(self, message, codif = "ascii"):
+        """
+        Envia un mensaje a través del socket de la conexión.
+
+        Args:
+            msj: Mensaje a enviar, puede ser una cadena de texto o bytes.
+            codif: Codificación a utilizar para enviar el mensaje. Por defecto es "ascii".
+
+        Raises:
+            ValueError: Si se especifica una codificación inválida.
+        """
+        try:
+            # Verifica y aplica la codificación a utilizar
+            if codif == "ascii":
+                message = message.encode("ascii")
+            elif codif == "b64encode":
+                message = b64encode(message)
+            else:
+                raise ValueError(f"send: codificación inválida '{codif}'")
+            # Envía el mensaje
+            while message:
+                bytes_sent = self.socket.send(message)
+                assert bytes_sent > 0
+                message = message[bytes_sent:]
+            self.socket.send(EOL.encode("ascii"))  # Envía el fin de línea
+
+        except BrokenPipeError or ConnectionResetError:
+            logging.warning("No se pudo contactar al cliente")
+            self.connect = False
+        
         
     def error_handler(self, cod: int):
         """
@@ -47,34 +79,34 @@ class Connection(object):
             cod: Código de respuesta a enviar.
         """
         if fatal_status(cod):
-            print(f"{cod} {error_messages[cod]}")
-            self.socket.close()
+            self.send(f"{cod} {error_messages[cod]}")
+            self.quit()
         else:
-            print(f"{cod} {error_messages[cod]}")
+            self.send(f"{cod} {error_messages[cod]}")
+        
         
     def quit(self):
         """
-        Termina la conexión con el cliente.
+        Cierra la conexión al cliente
         """
-        self.error_handler(CODE_OK)
+        self.send(f"{CODE_OK} {error_messages[CODE_OK]}")
         self.connect = False
-        try:
-            self.socket.close()
-        except socket.error as e:
-            print(f"Error closing socket: {e}")
+        
+
         
     def get_file_listing(self):
         """
-        Devuelve una lista de los archivos en el directorio del servidor.
+        Obtiene la lista de archivos disponibles en el directorio y la envía al cliente
         """
-        lista_archivos = EOL.join(os.listdir(self.directory))
-        #join en este caso es para unir los elementos de la lista con el salto de linea \r\n
-        if len(lista_archivos) > 0:
-            self.error_handler(CODE_OK)
-            print(lista_archivos)
-        elif len(lista_archivos) == 0:
-            self.error_handler(INTERNAL_ERROR)
-            
+        rta = ""
+        # Itero sobre la lista de archivos disponibles en el directorio
+        for fil in os.listdir(self.directory):
+            # Agrego los archvios a la cadena de respuesta
+            rta += fil + EOL
+        self.error_handler(CODE_OK)
+        self.send(rta)
+      
+                
     def get_metadata(self, filename):
         """
         Devuelve un diccionario con los metadatos del archivo filename.
@@ -83,7 +115,7 @@ class Connection(object):
         if os.path.isfile(os.path.join(self.directory, filename)) and len(aux) == 0:
             file_size = os.path.getsize(os.path.join(self.directory, filename))
             self.error_handler(CODE_OK)
-            print(str(file_size))
+            self.send(f"{file_size}")
         elif len(aux) != 0:
             self.error_handler(INVALID_ARGUMENTS)    
         else:
@@ -100,12 +132,12 @@ class Connection(object):
         # Se verifica si es un archivo valido
         if self.valid_file(filename) != CODE_OK:
             # Se envia el mensaje de error correspondiente por no ser un archivo valido
-            self.header(self.valid_file(filename))
+            self.error_handler(self.valid_file(filename))
         else:
             filepath = os.path.join(self.directory, filename)
             file_size = os.path.getsize(filepath)
             if offset < 0 or offset + size > file_size or size < 0:
-                self.header(BAD_OFFSET)
+                self.error_handler(BAD_OFFSET)
             # Abrir el archivo en modo lectura binario "rb"
             # 'r' se abrira el archivo en modo lectura y 'b' se abrira en modo binario
             else:
@@ -113,10 +145,9 @@ class Connection(object):
                     # Lee el slice del archivo especificado, inicia en offset y lee size bytes
                     f.seek(offset)
                     slice_data = f.read(size)
-                    self.header(CODE_OK)
-                    self.send(slice_data, codif="b64encode")
+                    self.error_handler(CODE_OK)
+                    self.send(slice_data, "b64encode")
     
-
 # Creo un selector de comandos, que se encargará de llamar a los métodos correspondientes
 # cmd es un string que representa el comando a ejecutar
     def cmd_selector(self, input):
@@ -127,6 +158,7 @@ class Connection(object):
         try:
             print("Received: %s" % input)
             cmd, *args = input.split(" ")
+            print(f"Command: {cmd}")
             if cmd == "quit":
                 if len(args) == 0:
                     self.quit()
@@ -139,7 +171,7 @@ class Connection(object):
                     self.error_handler(INVALID_ARGUMENTS)
             elif cmd == "get_slice":
                 if len(args) == 3:
-                    self.get_slice(args[0], args[1])
+                    self.get_slice(args[0], int(args[1]), int(args[2]))
                 else:
                     self.error_handler(INVALID_ARGUMENTS)
             elif cmd == "get_file_listing":
@@ -150,19 +182,41 @@ class Connection(object):
             else:
                 self.error_handler(INVALID_COMMAND)
         except Exception as e:
-            print("Error in connection handling: {e}")
+            print(f"Error in connection handling: {e}")
+
+
+    def _recv(self):
+        """
+        Recibe datos y acumula en el buffer interno.
+
+        Para uso privado del servidor.
+        """
+        try:
+            data = self.socket.recv(1024)
+            data_byte = data.decode("ascii")
+            self.buffer += data_byte
+
+            if len(data_byte) == 0:
+                self.quit()
+            if len(self.buffer) >= 2**32:
+                self.error_handler(BAD_REQUEST)
+        except UnicodeError:
+            self.error_handler(BAD_REQUEST)
+        except ConnectionResetError or BrokenPipeError:
+            logging.warning("No se pudo contactar al cliente")
+            self.connect = False
 
     def parser(self):
+        """
+        Espera datos hasta obtener una línea completa delimitada por el
+        terminador del protocolo.
+
+        Devuelve la línea sin el terminador ni espacios en blanco al inicio o final.
+        """
         while not EOL in self.buffer and self.connect:
-            try:
-                data = self.socket.recv(4096).decode("ascii")
-                self.buffer += data
-            except UnicodeError:
-                self.error_handler(BAD_REQUEST)
+            self._recv()
         if EOL in self.buffer:
-            #Guardamos en response la linea de codigo antes de EOL
-            response, self.buffer = self.buffer.split(EOL,1) 
-            #Le sacamos los espacios a response           
+            response, self.buffer = self.buffer.split(EOL, 1)
             return response.strip()
 
     def handle(self):

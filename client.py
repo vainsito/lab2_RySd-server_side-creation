@@ -139,7 +139,9 @@ class Client(object):
         """
         result = []
         self.send('get_file_listing')
+        print("Enviado get_file_listing")
         self.status, message = self.read_response_line()
+        print(f"Status: {self.status}")
         if self.status == CODE_OK:
             filename = self.read_line()
             while filename:
@@ -247,6 +249,7 @@ def main():
     for filename in files:
         print(filename)
 
+    print("Status client %s" % client.status)
     if client.status == CODE_OK:
         print("* Indique el nombre del archivo a descargar:")
         client.retrieve(input().strip())
