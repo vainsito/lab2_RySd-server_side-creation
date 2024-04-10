@@ -39,7 +39,7 @@ class Connection(object):
         else:
             return FILE_NOT_FOUND
     
-    def send(self, message, codif = "ascii"):
+    def send(self, message, codificacion = "ascii"):
         """
         Envia un mensaje a través del socket de la conexión.
 
@@ -52,12 +52,12 @@ class Connection(object):
         """
         try:
             # Verifica y aplica la codificación a utilizar
-            if codif == "ascii":
+            if codificacion == "ascii":
                 message = message.encode("ascii")
-            elif codif == "b64encode":
+            elif codificacion == "b64encode":
                 message = b64encode(message)
             else:
-                raise ValueError(f"send: codificación inválida '{codif}'")
+                raise ValueError(f"send: codificación inválida '{codificacion}'")
             # Envía el mensaje
             while message:
                 bytes_sent = self.socket.send(message)
@@ -111,10 +111,12 @@ class Connection(object):
         Devuelve un diccionario con los metadatos del archivo filename.
         """
         aux = set(filename) - VALID_CHARS
+        # Buscamos si el archivo se encuentra en el directorio y que sus caracteres sean validos
         if os.path.isfile(os.path.join(self.directory, filename)) and len(aux) == 0:
             file_size = os.path.getsize(os.path.join(self.directory, filename))
             self.error_handler(CODE_OK)
-            self.send(f"{file_size}\n")  # Añade un carácter de fin de línea
+            # Añade un carácter de fin de línea
+            self.send(f"{file_size}\n")
         elif len(aux) != 0:
             self.error_handler(INVALID_ARGUMENTS)    
             self.send("Invalid arguments")
@@ -129,25 +131,26 @@ class Connection(object):
             offset (int): El byte de inicio del slice.
             size (int): El tamaño del slice.
         """
-        # Se verifica si es un archivo valido
         if self.valid_file(filename) != CODE_OK:
-            # Se envia el mensaje de error correspondiente por no ser un archivo valido
+            # Si el archivo no es valido, enviamos el codigo correspondiente
             self.error_handler(self.valid_file(filename))
-        else:
+        elif filename in os.listdir(self.directory):
             filepath = os.path.join(self.directory, filename)
             file_size = os.path.getsize(filepath)
             if offset < 0 or offset + size > file_size or size < 0:
                 self.error_handler(BAD_OFFSET)
-            # Abrir el archivo en modo lectura binario "rb"
-            # 'r' se abrira el archivo en modo lectura y 'b' se abrira en modo binario
             else:
+                # Con "rb" abrimos el archivo en modo lectura binario
+                # Usamos with para garantizar la adquisicion y liberacion adecuada de recursos
                 with open(filepath, "rb") as f:
                     # Lee el slice del archivo especificado, inicia en offset y lee size bytes
                     f.seek(offset)
                     slice_data = f.read(size)
                     self.error_handler(CODE_OK)
                     self.send(slice_data, "b64encode")
-    
+        else:
+            self.error_handler(FILE_NOT_FOUND)
+
 # Creo un selector de comandos, que se encargará de llamar a los métodos correspondientes
 # cmd es un string que representa el comando a ejecutar
     def cmd_selector(self, input):
@@ -200,7 +203,7 @@ class Connection(object):
             data = self.socket.recv(4096)
             data_byte = data.decode("ascii")
             self.buffer += data_byte
-
+            #Buscamos errores
             if len(data_byte) == 0:
                 self.quit()
             if len(self.buffer) >= 2**32:
@@ -218,11 +221,13 @@ class Connection(object):
 
         Devuelve la línea sin el terminador ni espacios en blanco al inicio o final.
         """
+        # Mientras que no termine la linea del buffer y permanezcamos conectados;
         while not EOL in self.buffer and self.connect:
             self._recv()
         if EOL in self.buffer:
-            response, self.buffer = self.buffer.split(EOL, 1)
-            return response.strip()
+            # Si encontramos el fin de linea debemos "splitear" el buffer
+            respuesta, self.buffer = self.buffer.split(EOL, 1)
+            return respuesta.strip()
 
     def handle(self):
             """
@@ -231,8 +236,10 @@ class Connection(object):
             line = ""
             while self.connect:
                 if NEWLINE in line:
+                    # En caso de que no haya nada en el archivo deberia haber /r/n, no /n.
                     self.error_handler(BAD_EOL)
                 elif len(line) > 0:
                     self.cmd_selector(line)
+                # Seguimos buscando lineas hasta que en recv, llamado por parser, setea self.connect en false.
                 line = self.parser()
             self.socket.close()
