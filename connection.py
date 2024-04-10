@@ -114,9 +114,10 @@ class Connection(object):
         if os.path.isfile(os.path.join(self.directory, filename)) and len(aux) == 0:
             file_size = os.path.getsize(os.path.join(self.directory, filename))
             self.error_handler(CODE_OK)
-            self.send(f"{file_size}")
+            self.send(f"{file_size}\n")  # Añade un carácter de fin de línea
         elif len(aux) != 0:
             self.error_handler(INVALID_ARGUMENTS)    
+            self.send("Invalid arguments")
         else:
             self.error_handler(FILE_NOT_FOUND)
             
@@ -170,7 +171,12 @@ class Connection(object):
                     self.error_handler(INVALID_ARGUMENTS)
             elif cmd == "get_slice":
                 if len(args) == 3:
-                    self.get_slice(args[0], int(args[1]), int(args[2]))
+                    try:
+                        offset = int(args[1])
+                        size = int(args[2])
+                        self.get_slice(args[0], offset, size)
+                    except:
+                        self.error_handler(INVALID_ARGUMENTS)
                 else:
                     self.error_handler(INVALID_ARGUMENTS)
             elif cmd == "get_file_listing":
@@ -191,7 +197,7 @@ class Connection(object):
         Para uso privado del servidor.
         """
         try:
-            data = self.socket.recv(1024)
+            data = self.socket.recv(4096)
             data_byte = data.decode("ascii")
             self.buffer += data_byte
 
