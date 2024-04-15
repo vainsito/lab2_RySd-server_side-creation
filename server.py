@@ -43,7 +43,9 @@ class Server(object):
 
         # Se crea el socket y se lo vincula a la dirección y puerto
         oursocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Permite reutilizar la dirección en caso de que el servidor se cierre
         oursocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Se vincula el socket a la dirección y puerto especificados
         oursocket.bind((addr, port))
 
         # Se guarda el socket y el directorio compartido en el objeto
@@ -67,6 +69,7 @@ class Server(object):
             # Creamos un nuevo hilo para manejar la conexión entrante
             t = threading.Thread(target=cn.handle)
             t.start()
+
 
 
 # Punto de entrada del programa que lanza un servidor con protocolo HFTP

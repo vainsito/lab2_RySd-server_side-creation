@@ -9,6 +9,9 @@ from constants import *
 from base64 import b64encode
 import logging
 
+# Importo libreria para usar sleep
+
+
 class Connection(object):
     """
     Conexión punto a punto entre el servidor y un cliente.
@@ -38,8 +41,8 @@ class Connection(object):
             return INVALID_ARGUMENTS
         else:
             return FILE_NOT_FOUND
-    
-    def send(self, message, codificacion = "ascii"):
+
+    def send(self, message, codificacion="ascii"):
         """
         Envia un mensaje a través del socket de la conexión.
 
@@ -68,8 +71,7 @@ class Connection(object):
         except BrokenPipeError or ConnectionResetError:
             logging.warning("No se pudo contactar al cliente")
             self.connect = False
-        
-        
+
     def error_handler(self, cod: int):
         """
         Envia el encabezado de respuesta al cliente y
@@ -83,8 +85,7 @@ class Connection(object):
             self.quit()
         else:
             self.send(f"{cod} {error_messages[cod]}")
-        
-        
+
     def quit(self):
         """
         Cierra la conexión al cliente
@@ -104,26 +105,25 @@ class Connection(object):
             rta += fil + EOL
         self.error_handler(CODE_OK)
         self.send(rta)
-      
-                
+
     def get_metadata(self, filename):
         """
-        Devuelve un diccionario con los metadatos del archivo filename.
+        Devuelve el tamaño del archivo especificado.
         """
         aux = set(filename) - VALID_CHARS
+        code_res = self.valid_file(filename)
         # Buscamos si el archivo se encuentra en el directorio y que sus caracteres sean validos
-        if os.path.isfile(os.path.join(self.directory, filename)) and len(aux) == 0:
+        if code_res == CODE_OK:
             file_size = os.path.getsize(os.path.join(self.directory, filename))
             self.error_handler(CODE_OK)
             # Añade un carácter de fin de línea
             self.send(f"{file_size}\n")
-        elif len(aux) != 0:
-            self.error_handler(INVALID_ARGUMENTS)    
+        elif code_res == INVALID_ARGUMENTS:
+            self.error_handler(INVALID_ARGUMENTS)
             self.send("Invalid arguments")
         else:
             self.error_handler(FILE_NOT_FOUND)
-            
-    
+
     def get_slice(self, filename: str, offset: int, size: int):
         """
         Args:
@@ -131,14 +131,17 @@ class Connection(object):
             offset (int): El byte de inicio del slice.
             size (int): El tamaño del slice.
         """
-        if self.valid_file(filename) != CODE_OK:
+        code_res = self.valid_file(filename)
+        if code_res != CODE_OK:
             # Si el archivo no es valido, enviamos el codigo correspondiente
-            self.error_handler(self.valid_file(filename))
+            self.error_handler(code_res)
         elif filename in os.listdir(self.directory):
             filepath = os.path.join(self.directory, filename)
             file_size = os.path.getsize(filepath)
-            if offset < 0 or offset + size > file_size or size < 0:
+            if offset < 0 or offset + size > file_size:
                 self.error_handler(BAD_OFFSET)
+            elif size < 0:
+                self.error_handler(INVALID_ARGUMENTS)
             else:
                 # Con "rb" abrimos el archivo en modo lectura binario
                 # Usamos with para garantizar la adquisicion y liberacion adecuada de recursos
@@ -151,8 +154,8 @@ class Connection(object):
         else:
             self.error_handler(FILE_NOT_FOUND)
 
-# Creo un selector de comandos, que se encargará de llamar a los métodos correspondientes
-# cmd es un string que representa el comando a ejecutar
+    # Creo un selector de comandos, que se encargará de llamar a los métodos correspondientes
+    # cmd es un string que representa el comando a ejecutar
     def cmd_selector(self, input):
         """
         Selecciona el comando a ejecutar segun el string cmd
@@ -170,7 +173,7 @@ class Connection(object):
             elif cmd == "get_metadata":
                 if len(args) == 1:
                     self.get_metadata(args[0])
-                else:    
+                else:
                     self.error_handler(INVALID_ARGUMENTS)
             elif cmd == "get_slice":
                 if len(args) == 3:
@@ -192,7 +195,6 @@ class Connection(object):
         except Exception as e:
             print(f"Error in connection handling: {e}")
 
-
     def _recv(self):
         """
         Recibe datos y acumula en el buffer interno.
@@ -203,7 +205,7 @@ class Connection(object):
             data = self.socket.recv(4096)
             data_byte = data.decode("ascii")
             self.buffer += data_byte
-            #Buscamos errores
+            # Buscamos errores
             if len(data_byte) == 0:
                 self.quit()
             if len(self.buffer) >= 2**32:
@@ -230,16 +232,16 @@ class Connection(object):
             return respuesta.strip()
 
     def handle(self):
-            """
-            Atiende eventos de la conexión hasta que termina.
-            """
-            line = ""
-            while self.connect:
-                if NEWLINE in line:
-                    # En caso de que no haya nada en el archivo deberia haber /r/n, no /n.
-                    self.error_handler(BAD_EOL)
-                elif len(line) > 0:
-                    self.cmd_selector(line)
-                # Seguimos buscando lineas hasta que en recv, llamado por parser, setea self.connect en false.
-                line = self.parser()
-            self.socket.close()
+        """
+        Atiende eventos de la conexión hasta que termina.
+        """
+        line = ""
+        while self.connect:
+            if NEWLINE in line:
+                # En caso de que no haya nada en el archivo deberia haber /r/n, no /n.
+                self.error_handler(BAD_EOL)
+            elif len(line) > 0:
+                self.cmd_selector(line)
+            # Seguimos buscando lineas hasta que en recv, llamado por parser, setea self.connect en false.
+            line = self.parser()
+        self.socket.close()
